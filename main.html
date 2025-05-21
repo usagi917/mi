@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MIトップ才能診断</title>
+    <!-- Tailwind（CDN / 開発用）-->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for radar chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="bg-gray-50 text-gray-800 flex flex-col items-center p-6 gap-6">
+    <h1 class="text-3xl font-bold">わたしのトップ才能スマート診断</h1>
+
+    <!-- クイズ設置場所 -->
+    <div id="quiz"></div>
+
+    <!-- 結果表示領域 -->
+    <div id="result" class="hidden w-full max-w-2xl space-y-6">
+      <h2 class="text-2xl font-semibold">キミのナンバーワン才能✨</h2>
+      <canvas id="chart" height="300"></canvas>
+      <ul id="top-list" class="space-y-3"></ul>
+    </div>
+
+    <script>
+      /********************* 質問＆定義 *********************/
+      const CATS = {
+        linguistic: '言語的知能',
+        logical: '論理・数学的知能',
+        spatial: '空間的知能',
+        musical: '音楽的知能',
+        bodily: '身体運動的知能',
+        interpersonal: '対人的知能',
+        intrapersonal: '内省的知能',
+        naturalistic: '博物的知能',
+      };
+      const DESC = {
+        linguistic: 'おしゃべり上手で、言葉のセンスがヤバい！',
+        logical: '数字とか論理的思考が得意なタイプ。',
+        spatial: '地図とか図形をサクッと理解できる人。',
+        musical: 'リズム感バッチリで、音楽センス抜群！',
+        bodily: '運動神経バツグンで、体を使うのが得意。',
+        interpersonal: '人とのコミュ力が高くて、空気読むの得意。',
+        intrapersonal: '自分の気持ちとか考えを深く理解できる人。',
+        naturalistic: '自然とか生き物に詳しくて、観察力がスゴい！',
+      };
+
+      // 各知能3問ずつ 8*3 = 24問
+      const QS = [
+        // 言語
+        { id: 'ling1', cat: 'linguistic', text: '物語を読むと情景が頭に浮かぶ？' },
+        { id: 'ling2', cat: 'linguistic', text: '新しい語句やことわざを覚えるのが好き？' },
+        { id: 'ling3', cat: 'linguistic', text: '自分の気持ちを文章にするとスッキリする？' },
+        // 論理
+        { id: 'log1', cat: 'logical', text: '数字パズルやクイズにワクワクする？' },
+        { id: 'log2', cat: 'logical', text: '「なぜそうなる？」と理由を考えるクセがある？' },
+        { id: 'log3', cat: 'logical', text: '問題を順序だてて解くのが得意？' },
+        // 空間
+        { id: 'spa1', cat: 'spatial', text: 'レゴやブロックで立体を作るのが好き？' },
+        { id: 'spa2', cat: 'spatial', text: '地図を見ながら目的地に行くのが得意？' },
+        { id: 'spa3', cat: 'spatial', text: '描いた絵の構図を褒められたことがある？' },
+        // 音楽
+        { id: 'mus1', cat: 'musical', text: '曲を聴くとすぐリズムに乗れる？' },
+        { id: 'mus2', cat: 'musical', text: '楽器や歌でメロディを再現できる？' },
+        { id: 'mus3', cat: 'musical', text: '音の高さや違いを聞き分けられる？' },
+        // 身体
+        { id: 'bod1', cat: 'bodily', text: 'スポーツやダンスで体を動かすと元気100倍？' },
+        { id: 'bod2', cat: 'bodily', text: '実験や工作など手を動かす学びが好き？' },
+        { id: 'bod3', cat: 'bodily', text: '長時間じっと座るより動いている方が集中できる？' },
+        // 対人
+        { id: 'intp1', cat: 'interpersonal', text: '友だちの気持ちをすぐ察して声をかける？' },
+        { id: 'intp2', cat: 'interpersonal', text: 'グループ活動でまとめ役になることが多い？' },
+        { id: 'intp3', cat: 'interpersonal', text: '相手の立場に立って説明できる？' },
+        // 内省
+        { id: 'intr1', cat: 'intrapersonal', text: 'ひとりで考える時間が好き？' },
+        { id: 'intr2', cat: 'intrapersonal', text: '自分の夢や目標を紙に書いている？' },
+        { id: 'intr3', cat: 'intrapersonal', text: '気持ちを言葉で整理すると落ち着く？' },
+        // 自然
+        { id: 'nat1', cat: 'naturalistic', text: '植物や生き物の観察が楽しい？' },
+        { id: 'nat2', cat: 'naturalistic', text: '自然の中にいるとリラックスできる？' },
+        { id: 'nat3', cat: 'naturalistic', text: '石や葉っぱを集めたことがある？' },
+      ];
+
+      // 4段階リッカート
+      const CHOICES = [
+        { label: 'とてもそう思う', val: 4 },
+        { label: 'そう思う', val: 3 },
+        { label: 'あまり思わない', val: 2 },
+        { label: '全く思わない', val: 1 },
+      ];
+
+      /********************* クイズ描画 *********************/
+      const state = {}; // id: value
+      const quizEl = document.getElementById('quiz');
+
+      QS.forEach((q) => {
+        const sec = document.createElement('section');
+        sec.className = 'w-full max-w-2xl mb-4 space-y-2';
+        sec.innerHTML = `<p class="font-medium">${q.text}</p>`;
+        const wrap = document.createElement('div');
+        wrap.className = 'flex flex-wrap gap-2';
+        CHOICES.forEach((c) => {
+          const btn = document.createElement('button');
+          btn.textContent = c.label;
+          btn.className = 'px-3 py-1 rounded-lg border text-sm bg-gray-200 hover:bg-gray-300';
+          btn.onclick = () => {
+            state[q.id] = c.val;
+            [...wrap.children].forEach((b) => b.classList.remove('bg-indigo-600', 'text-white'));
+            btn.classList.add('bg-indigo-600', 'text-white');
+            if (Object.keys(state).length === QS.length) showResult();
+          };
+          wrap.appendChild(btn);
+        });
+        sec.appendChild(wrap);
+        quizEl.appendChild(sec);
+      });
+
+      /********************* 結果処理 *********************/
+      function showResult() {
+        // 各カテゴリ平均スコア算出
+        const scores = {};
+        Object.keys(CATS).forEach((k) => {
+          const rel = QS.filter((q) => q.cat === k);
+          const total = rel.reduce((s, q) => s + (state[q.id] || 0), 0);
+          scores[k] = total / rel.length;
+        });
+
+        // 最大値を抽出（同点複数対応）
+        const maxVal = Math.max(...Object.values(scores));
+        const topCats = Object.entries(scores)
+          .filter(([, v]) => v === maxVal)
+          .map(([k]) => k);
+
+        // Radar Chart
+        new Chart(document.getElementById('chart'), {
+          type: 'radar',
+          data: {
+            labels: Object.values(CATS),
+            datasets: [
+              {
+                data: Object.keys(CATS).map((k) => scores[k]),
+                label: 'スコア',
+                fill: true,
+              },
+            ],
+          },
+          options: {
+            scales: { r: { min: 0, max: 4, ticks: { stepSize: 1 } } },
+            plugins: { legend: { display: false } },
+          },
+        });
+
+        // トップ才能カード
+        const list = document.getElementById('top-list');
+        list.innerHTML = '';
+        topCats.forEach((k) => {
+          const li = document.createElement('li');
+          li.className = 'p-4 rounded-lg bg-indigo-50 border border-indigo-300 shadow-sm';
+          li.innerHTML = `<p class="font-bold">${CATS[k]}</p><p class="text-sm mt-1">${DESC[k]}</p>`;
+          list.appendChild(li);
+        });
+
+        document.getElementById('result').classList.remove('hidden');
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }
+    </script>
+  </body>
+</html>
